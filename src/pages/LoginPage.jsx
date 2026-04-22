@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { supabase } from '../lib/supabase'
 import { LogoTeal } from '../components/Logo'
 
 export default function LoginPage() {
@@ -16,8 +17,25 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     const { error } = await signIn(email, password)
-    if (error) { setError('Email ou mot de passe incorrect.'); setLoading(false) }
-    else navigate('/dashboard')
+    if (error) {
+      setError('Email ou mot de passe incorrect.')
+      setLoading(false)
+      return
+    }
+    // Check if 2FA is enabled for this user
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (authUser) {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('two_factor_enabled, two_factor_secret')
+        .eq('id', authUser.id)
+        .single()
+      if (prof?.two_factor_enabled && prof?.two_factor_secret) {
+        navigate('/verify-2fa')
+        return
+      }
+    }
+    navigate('/dashboard')
   }
 
   return (

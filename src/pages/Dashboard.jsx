@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase, generateCertId, hashDocument, formatDate, PLAN_COLORS, DOC_TYPES, generateQRCode } from '../lib/supabase'
 import { LogoTeal } from '../components/Logo'
-import { BadgeSVG, generateSealSVG } from '../components/Badge'
+import { BadgeSVG, generateSealSVG, generateRichSealSVG } from '../components/Badge'
 
 const NAV_ITEMS = [
   { key: 'overview', label: 'Vue d\'ensemble', icon: '◉' },
@@ -14,7 +14,7 @@ const NAV_ITEMS = [
 ]
 
 export default function Dashboard() {
-  const { user, profile, signOut, loading: authLoading } = useAuth()
+  const { user, profile, signOut, loading: authLoading, twoFactorVerified } = useAuth()
   const navigate = useNavigate()
   const [tab, setTab] = useState('overview')
   const [certs, setCerts] = useState([])
@@ -22,8 +22,10 @@ export default function Dashboard() {
   const [loadingCerts, setLoadingCerts] = useState(true)
 
   useEffect(() => {
-    if (!authLoading && !user) navigate('/login')
-  }, [user, authLoading])
+    if (authLoading) return
+    if (!user) { navigate('/login'); return }
+    if (profile?.two_factor_enabled && !twoFactorVerified) navigate('/verify-2fa')
+  }, [user, authLoading, profile, twoFactorVerified])
 
   useEffect(() => {
     if (profile?.issuer_id) fetchData()
@@ -167,7 +169,9 @@ function NewCertTab({ profile, onSuccess }) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [qrDataUrl, setQrDataUrl] = useState(null)
+  const [richSealSvg, setRichSealSvg] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [sealCopied, setSealCopied] = useState(false)
   const [error, setError] = useState('')
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -190,6 +194,14 @@ function NewCertTab({ profile, onSuccess }) {
       if (error) throw error
       const qr = await generateQRCode(certId)
       setQrDataUrl(qr)
+      const richSeal = generateRichSealSVG({
+        plan: profile?.issuers?.plan || 'bronze',
+        certId, entityName: form.entityName,
+        documentType: DOC_TYPES[form.documentType]?.fr || form.documentType,
+        issuedAt, issuerName: profile?.issuers?.name || 'VeryTrust',
+        qrDataUrl: qr,
+      })
+      setRichSealSvg(richSeal)
       setResult({ ...data, sealSvg })
     } catch (err) { setError(err.message) }
     setLoading(false)
@@ -208,37 +220,95 @@ function NewCertTab({ profile, onSuccess }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  function downloadSeal() {
+    const blob = new Blob([richSealSvg], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `verytrust-seal-${result.id}.svg`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function copySeal() {
+    navigator.clipboard.writeText(richSealSvg)
+    setSealCopied(true)
+    setTimeout(() => setSealCopied(false), 2000)
+  }
+
+  // Convert SVG string to safe data URL for <img> preview
+  const sealPreviewUrl = richSealSvg
+    ? 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(richSealSvg)
+    : null
+
   if (result) return (
-    <div className="fade-in">
-      <div style={{ maxWidth: 560, background: 'white', border: '1px solid #a8dede', borderRadius: 16, padding: 32, textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-        <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 900, color: '#0a2828', marginBottom: 8 }}>Certificat émis !</h2>
-        <div style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 700, color: '#0d8f8f', marginBottom: 16 }}>{result.id}</div>
-
-        <div style={{ background: '#f0fafa', borderRadius: 10, padding: 16, marginBottom: 20, fontSize: 12, color: '#4a7070', textAlign: 'left' }}>
-          <div style={{ marginBottom: 6 }}><strong>Entreprise :</strong> {result.entity_name}</div>
-          <div style={{ marginBottom: 6 }}><strong>Type :</strong> {DOC_TYPES[result.document_type]?.fr}</div>
-          <div style={{ marginBottom: 6 }}><strong>Certifié le :</strong> {formatDate(result.issued_at, 'fr')}</div>
-          <div><strong>URL vérification :</strong> <a href={`/verify/${result.id}`} style={{ color: '#0d8f8f' }} target="_blank" rel="noreferrer">verytrust.africa/verify/{result.id}</a></div>
+    <div className="fade-in" style={{ maxWidth: 640 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28 }}>
+        <BadgeSVG plan={profile?.issuers?.plan || 'bronze'} size={72} certId={result.id} />
+        <div>
+          <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 900, color: '#0a2828', marginBottom: 4 }}>Certificat émis !</h2>
+          <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: '#0d8f8f' }}>{result.id}</div>
         </div>
+      </div>
 
-        {/* QR Code */}
-        {qrDataUrl && (
-          <div style={{ margin: '0 auto 20px', display: 'inline-block', padding: 16, background: 'white', border: '1px solid #d4eded', borderRadius: 12 }}>
-            <img src={qrDataUrl} alt={`QR code ${result.id}`} width={180} height={180} style={{ display: 'block' }} />
-            <div style={{ fontSize: 10, color: '#8aadad', marginTop: 8, fontFamily: 'monospace' }}>{result.id}</div>
+      {/* Infos résumé */}
+      <div className="card" style={{ marginBottom: 20, fontSize: 13, color: '#4a7070' }}>
+        {[
+          ['Entreprise', result.entity_name],
+          ['Type', DOC_TYPES[result.document_type]?.fr],
+          ['Certifié le', formatDate(result.issued_at, 'fr')],
+          ['URL', `verytrust.africa/verify/${result.id}`],
+        ].map(([k, v]) => (
+          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f0fafa', fontSize: 12 }}>
+            <span style={{ color: '#8aadad', textTransform: 'uppercase', fontSize: 10, letterSpacing: 1 }}>{k}</span>
+            <span style={{ fontWeight: 600, color: '#0a2828' }}>{v}</span>
           </div>
-        )}
+        ))}
+      </div>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
-          <button className="btn-secondary" style={{ fontSize: 12 }} onClick={downloadQR}>↓ Télécharger le QR code</button>
-          <button className="btn-secondary" style={{ fontSize: 12 }} onClick={copyUrl}>{copied ? '✓ Copié !' : '⎘ Copier l\'URL'}</button>
+      {/* Sceau riche — aperçu */}
+      {sealPreviewUrl && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#0a2828', marginBottom: 12 }}>Sceau à intégrer dans votre PDF</div>
+          <div style={{ background: '#f8fefe', borderRadius: 10, padding: 16, border: '1px solid #d4eded', marginBottom: 16, overflow: 'auto' }}>
+            <img
+              src={sealPreviewUrl}
+              alt="Sceau VeryTrust"
+              style={{ width: '100%', maxWidth: 580, height: 'auto', display: 'block', margin: '0 auto' }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn-primary" style={{ fontSize: 12, flex: 1 }} onClick={downloadSeal}>
+              ↓ Télécharger le sceau SVG
+            </button>
+            <button className="btn-secondary" style={{ fontSize: 12, flex: 1 }} onClick={copySeal}>
+              {sealCopied ? '✓ SVG copié !' : '⎘ Copier le SVG'}
+            </button>
+          </div>
         </div>
+      )}
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-          <button className="btn-primary" onClick={onSuccess}>Voir mes certificats</button>
-          <button className="btn-secondary" onClick={() => { setResult(null); setQrDataUrl(null) }}>Nouveau certificat</button>
+      {/* QR + URL */}
+      {qrDataUrl && (
+        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20 }}>
+          <div style={{ padding: 10, background: 'white', border: '1px solid #d4eded', borderRadius: 10, flexShrink: 0 }}>
+            <img src={qrDataUrl} alt={`QR code ${result.id}`} width={100} height={100} style={{ display: 'block' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#0a2828', marginBottom: 8 }}>QR code de vérification</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn-secondary" style={{ fontSize: 11 }} onClick={downloadQR}>↓ Télécharger PNG</button>
+              <button className="btn-secondary" style={{ fontSize: 11 }} onClick={copyUrl}>{copied ? '✓ Copié !' : '⎘ Copier l\'URL'}</button>
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button className="btn-primary" style={{ flex: 1 }} onClick={onSuccess}>Voir mes certificats</button>
+        <button className="btn-secondary" style={{ flex: 1 }} onClick={() => { setResult(null); setQrDataUrl(null); setRichSealSvg(null) }}>Nouveau certificat</button>
       </div>
     </div>
   )
@@ -328,6 +398,9 @@ const cert = await vt.issue({
 }
 
 function ProfileTab({ profile, user }) {
+  const navigate = useNavigate()
+  const twoFaEnabled = profile?.two_factor_enabled
+
   return (
     <div className="fade-in">
       <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 900, color: '#0a2828', marginBottom: 24 }}>Mon profil</h1>
@@ -345,8 +418,18 @@ function ProfileTab({ profile, user }) {
           </div>
         ))}
         <div style={{ marginTop: 20 }}>
-          <p style={{ fontSize: 12, color: '#8aadad', marginBottom: 12 }}>🔐 Authentification à double facteur — Disponible prochainement</p>
-          <button className="btn-secondary" style={{ fontSize: 13 }} disabled>Activer la 2FA</button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#0a2828', marginBottom: 2 }}>🔐 Authentification à double facteur</p>
+              <p style={{ fontSize: 11, color: twoFaEnabled ? '#0d8f8f' : '#8aadad' }}>
+                {twoFaEnabled ? '✓ Active — votre compte est protégé' : 'Non activée'}
+              </p>
+            </div>
+            {twoFaEnabled
+              ? <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, background: '#e8f7f7', color: '#0d8f8f', border: '1px solid #a8dede', fontWeight: 700 }}>ACTIVE</span>
+              : <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => navigate('/2fa-setup')}>Activer la 2FA</button>
+            }
+          </div>
         </div>
       </div>
     </div>

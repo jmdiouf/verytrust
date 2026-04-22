@@ -9,6 +9,8 @@ import VerifyPage from './pages/VerifyPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import Dashboard from './pages/Dashboard'
+import TwoFactorSetup from './pages/TwoFactorSetup'
+import VerifyTwoFactor from './pages/VerifyTwoFactor'
 
 function App() {
   return (
@@ -21,6 +23,8 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/dashboard/*" element={<Dashboard />} />
+          <Route path="/2fa-setup" element={<TwoFactorSetup />} />
+          <Route path="/verify-2fa" element={<VerifyTwoFactor />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
