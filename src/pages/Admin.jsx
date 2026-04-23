@@ -337,7 +337,7 @@ function ReviewersTab() {
   useEffect(() => {
     async function load() {
       const { data } = await supabase
-        .from('profiles')
+        .from('users')
         .select('*, issuers(*)')
         .eq('role', 'reviewer')
         .order('created_at', { ascending: false })
@@ -349,7 +349,7 @@ function ReviewersTab() {
 
   async function toggleReviewer(id, currentRole) {
     const newRole = currentRole === 'reviewer' ? 'user' : 'reviewer'
-    await supabase.from('profiles').update({ role: newRole }).eq('id', id)
+    await supabase.from('users').update({ role: newRole }).eq('id', id)
     setReviewers(prev => prev.map(r => r.id === id ? { ...r, role: newRole } : r))
   }
 

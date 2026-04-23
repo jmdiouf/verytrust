@@ -48,7 +48,7 @@ export default function TwoFactorSetup() {
       return
     }
     const { error: dbError } = await supabase
-      .from('profiles')
+      .from('users')
       .update({ two_factor_secret: totp.secret.base32, two_factor_enabled: true })
       .eq('id', user.id)
     if (dbError) {

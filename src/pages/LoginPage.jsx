@@ -26,7 +26,7 @@ export default function LoginPage() {
     const { data: { user: authUser } } = await supabase.auth.getUser()
     if (authUser) {
       const { data: prof } = await supabase
-        .from('profiles')
+        .from('users')
         .select('two_factor_enabled, two_factor_secret')
         .eq('id', authUser.id)
         .single()

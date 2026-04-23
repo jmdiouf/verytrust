@@ -18,7 +18,7 @@ export default function VerifyTwoFactor() {
     setError('')
     try {
       const { data: prof, error: dbError } = await supabase
-        .from('profiles')
+        .from('users')
         .select('two_factor_secret')
         .eq('id', user.id)
         .single()
