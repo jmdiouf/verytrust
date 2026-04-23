@@ -14,8 +14,9 @@ CREATE TABLE IF NOT EXISTS issuers (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. UTILISATEURS (liés aux éditeurs)
-CREATE TABLE IF NOT EXISTS users (
+-- 2. PROFILS UTILISATEURS (liés aux éditeurs)
+-- Note: table nommée "profiles" pour correspondre au code frontend
+CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   role TEXT DEFAULT 'issuer' CHECK (role IN ('issuer','reviewer','admin')),
@@ -53,38 +54,78 @@ CREATE TABLE IF NOT EXISTS verifications (
 );
 
 -- ============================================
+-- FONCTION HELPER : vérifier le rôle admin
+-- ============================================
+
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+CREATE OR REPLACE FUNCTION is_own_issuer(iid UUID)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM profiles WHERE id = auth.uid() AND issuer_id = iid
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- ============================================
 -- ROW LEVEL SECURITY
 -- ============================================
 
-ALTER TABLE issuers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE issuers      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE certificates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE verifications ENABLE ROW LEVEL SECURITY;
 
--- Certificats : lecture publique
-CREATE POLICY "certificates_public_read" ON certificates
-  FOR SELECT USING (true);
+-- ── ISSUERS ───────────────────────────────────────────────────────────────────
 
--- Certificats : écriture uniquement par l'émetteur
-CREATE POLICY "certificates_issuer_insert" ON certificates
-  FOR INSERT WITH CHECK (
-    issuer_id IN (SELECT issuer_id FROM users WHERE id = auth.uid())
-  );
-
--- Vérifications : insertion publique
-CREATE POLICY "verifications_public_insert" ON verifications
-  FOR INSERT WITH CHECK (true);
-
--- Users : lecture de son propre profil
-CREATE POLICY "users_own_profile" ON users
-  FOR ALL USING (id = auth.uid());
-
--- Issuers : lecture publique
+-- Lecture publique (pour la vérification et le dashboard)
 CREATE POLICY "issuers_public_read" ON issuers
   FOR SELECT USING (true);
 
+-- Modification réservée aux admins
+CREATE POLICY "issuers_admin_write" ON issuers
+  FOR ALL USING (is_admin());
+
+-- ── PROFILES ──────────────────────────────────────────────────────────────────
+
+-- Lecture et modification de son propre profil
+CREATE POLICY "profiles_own" ON profiles
+  FOR ALL USING (id = auth.uid());
+
+-- Lecture et modification par les admins (pour la gestion des rôles)
+CREATE POLICY "profiles_admin_all" ON profiles
+  FOR ALL USING (is_admin());
+
+-- ── CERTIFICATES ──────────────────────────────────────────────────────────────
+
+-- Lecture publique (pour la vérification)
+CREATE POLICY "certificates_public_read" ON certificates
+  FOR SELECT USING (true);
+
+-- Insertion uniquement par l'émetteur propriétaire
+CREATE POLICY "certificates_issuer_insert" ON certificates
+  FOR INSERT WITH CHECK (is_own_issuer(issuer_id));
+
+-- Mise à jour (invalidation) réservée aux admins
+CREATE POLICY "certificates_admin_update" ON certificates
+  FOR UPDATE USING (is_admin());
+
+-- ── VERIFICATIONS ─────────────────────────────────────────────────────────────
+
+-- Insertion publique (toute personne peut déclencher une vérification)
+CREATE POLICY "verifications_public_insert" ON verifications
+  FOR INSERT WITH CHECK (true);
+
+-- Lecture réservée aux admins (les logs contiennent des IPs)
+CREATE POLICY "verifications_admin_read" ON verifications
+  FOR SELECT USING (is_admin());
+
 -- ============================================
--- TRIGGER : créer user profile après signup
+-- TRIGGER : créer le profil après signup
 -- ============================================
 
 CREATE OR REPLACE FUNCTION handle_new_user()
@@ -100,7 +141,7 @@ BEGIN
   )
   RETURNING id INTO new_issuer_id;
 
-  INSERT INTO users (id, email, issuer_id, role)
+  INSERT INTO profiles (id, email, issuer_id, role)
   VALUES (NEW.id, NEW.email, new_issuer_id, 'issuer');
 
   RETURN NEW;
