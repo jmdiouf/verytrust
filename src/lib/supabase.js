@@ -33,7 +33,15 @@ export const DOC_TYPES = {
   fiscal:          { fr: 'Déclaration fiscale',        en: 'Tax Return' },
   juridique:       { fr: 'Acte juridique',             en: 'Legal Act' },
   evaluation:      { fr: 'Rapport d\'évaluation',      en: 'Valuation Report' },
-  autre:           { fr: 'Autre document',             en: 'Other document' },
+  autre:                    { fr: 'Autre document',                          en: 'Other document' },
+  etats_financiers_complets: { fr: 'États Financiers Complets',               en: 'Complete Financial Statements' },
+  etats_consolides:          { fr: 'États Financiers Consolidés',             en: 'Consolidated Financial Statements' },
+  rapport_commissariat:      { fr: 'Rapport de Commissariat aux Comptes',     en: 'Statutory Audit Report' },
+  rapport_revue_limitee:     { fr: 'Rapport de Revue Limitée',                en: 'Limited Review Report' },
+  declaration_fiscale:       { fr: 'Déclaration Fiscale Annuelle',            en: 'Annual Tax Return' },
+  rapport_audit_interne:     { fr: "Rapport d'Audit Interne",                 en: 'Internal Audit Report' },
+  evaluation_immobiliere:    { fr: 'Évaluation Immobilière',                  en: 'Real Estate Valuation' },
+  acte_juridique:            { fr: 'Acte Juridique',                          en: 'Legal Document' },
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

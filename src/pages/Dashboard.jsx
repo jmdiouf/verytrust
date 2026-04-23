@@ -6,6 +6,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { supabase, generateCertId, hashDocument, formatDate, PLAN_COLORS, DOC_TYPES, generateQRCode } from '../lib/supabase'
 import { LogoTeal } from '../components/Logo'
 import { BadgeSVG, generateSealSVG, generateRichSealSVG } from '../components/Badge'
+import { getPaysList, getPaysNom, getOrdresForPays, getReferentielsForPays, SECTEURS, SPECIALITES } from '../lib/paysConfig'
 
 const NAV_ITEMS = [
   { key: 'overview', labelKey: 'nav_overview', icon: '◉' },
@@ -214,7 +215,12 @@ function CertRow({ cert, showCopy }) {
 
 function NewCertTab({ profile, onSuccess }) {
   const { t } = useTranslation()
-  const [form, setForm] = useState({ entityName: '', entityRef: '', documentType: 'bilan', referentiel: 'SYSCOHADA', fiscalYear: new Date().getFullYear().toString() })
+  const [form, setForm] = useState({
+    entityName: '', entityRef: '', documentType: 'bilan',
+    referentiel: 'SYSCOHADA Révisé 2017',
+    fiscalYear: new Date().getFullYear().toString(),
+    pays_societe: 'SN', secteur: 'commerce',
+  })
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [qrDataUrl, setQrDataUrl] = useState(null)
@@ -224,6 +230,11 @@ function NewCertTab({ profile, onSuccess }) {
   const [error, setError] = useState('')
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  function handlePaysChange(pays) {
+    const refs = getReferentielsForPays(pays)
+    setForm(f => ({ ...f, pays_societe: pays, referentiel: refs[0]?.code || 'SYSCOHADA Révisé 2017' }))
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -238,7 +249,8 @@ function NewCertTab({ profile, onSuccess }) {
         document_type: form.documentType, entity_name: form.entityName,
         entity_ref: form.entityRef, referentiel: form.referentiel,
         fiscal_year: form.fiscalYear, issued_at: issuedAt,
-        signature, seal_svg: sealSvg, is_valid: true
+        signature, seal_svg: sealSvg, is_valid: true,
+        metadata: { pays_societe: form.pays_societe, secteur: form.secteur },
       }).select().single()
       if (error) throw error
       const qr = await generateQRCode(certId)
@@ -307,6 +319,11 @@ function NewCertTab({ profile, onSuccess }) {
           [t('dash_cert_type'), DOC_TYPES[result.document_type]?.fr],
           [t('dash_cert_date'), formatDate(result.issued_at, 'fr')],
           [t('dash_cert_url'), `verytrust.africa/verify/${result.id}`],
+          ...(profile?.nom_affiche        ? [['Professionnel',    profile.nom_affiche]]        : []),
+          ...(profile?.titre_professionnel ? [['Titre',           profile.titre_professionnel]] : []),
+          ...(profile?.numero_inscription  ? [["N° inscription",  profile.numero_inscription]]  : []),
+          ...(profile?.ordre_professionnel ? [['Ordre',           profile.ordre_professionnel]] : []),
+          ...(profile?.pays_exercice       ? [["Pays d'exercice", getPaysNom(profile.pays_exercice)]] : []),
         ].map(([k, v]) => (
           <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f0fafa', fontSize: 12 }}>
             <span style={{ color: '#8aadad', textTransform: 'uppercase', fontSize: 10, letterSpacing: 1 }}>{k}</span>
@@ -369,26 +386,49 @@ function NewCertTab({ profile, onSuccess }) {
         <form onSubmit={handleSubmit}>
           {[
             { key: 'entityName', labelKey: 'dash_company_label', placeholder: 'Vallion SA', type: 'text' },
-            { key: 'entityRef', labelKey: 'dash_ref_label', placeholder: 'SN-DKR-2024-B-12345', type: 'text' },
-            { key: 'fiscalYear', labelKey: 'dash_year_label', placeholder: '2024', type: 'text' },
+            { key: 'entityRef',  labelKey: 'dash_ref_label',     placeholder: 'SN-DKR-2024-B-12345', type: 'text' },
+            { key: 'fiscalYear', labelKey: 'dash_year_label',    placeholder: '2024', type: 'text' },
           ].map(f => (
             <div key={f.key} style={{ marginBottom: 16 }}>
               <label className="label">{t(f.labelKey)}</label>
               <input className="input-field" type={f.type} value={form[f.key]} onChange={e => set(f.key, e.target.value)} placeholder={f.placeholder} required={f.key !== 'entityRef'} />
             </div>
           ))}
+
+          {/* Pays de la société cliente */}
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Pays de la société cliente</label>
+            <select className="input-field" value={form.pays_societe} onChange={e => handlePaysChange(e.target.value)}>
+              {getPaysList().map(p => <option key={p.code} value={p.code}>{p.nom}</option>)}
+            </select>
+          </div>
+
+          {/* Secteur d'activité */}
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Secteur d'activité</label>
+            <select className="input-field" value={form.secteur} onChange={e => set('secteur', e.target.value)}>
+              {SECTEURS.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
+            </select>
+          </div>
+
+          {/* Type de document */}
           <div style={{ marginBottom: 16 }}>
             <label className="label">{t('dash_type_label')}</label>
             <select className="input-field" value={form.documentType} onChange={e => set('documentType', e.target.value)}>
               {Object.entries(DOC_TYPES).map(([k, v]) => <option key={k} value={k}>{v.fr}</option>)}
             </select>
           </div>
+
+          {/* Référentiel filtré par pays */}
           <div style={{ marginBottom: 24 }}>
             <label className="label">{t('dash_referentiel_label')}</label>
             <select className="input-field" value={form.referentiel} onChange={e => set('referentiel', e.target.value)}>
-              {['SYSCOHADA', 'SYSCOHADA Révisé 2017', 'PCB', 'RCSFD', 'IFRS', 'SYSCAM', 'SYCEBNL', 'Autre'].map(r => <option key={r} value={r}>{r}</option>)}
+              {getReferentielsForPays(form.pays_societe).map(r => (
+                <option key={r.code} value={r.code}>{r.labelFull}</option>
+              ))}
             </select>
           </div>
+
           <button className="btn-primary" style={{ width: '100%', padding: 13, fontSize: 14 }} disabled={loading}>
             {loading ? <span className="spinner" /> : t('dash_submit_cert')}
           </button>
@@ -451,16 +491,67 @@ function ProfileTab({ profile, user }) {
   const { t } = useTranslation()
   const twoFaEnabled = profile?.two_factor_enabled
 
+  const [profForm, setProfForm] = useState({
+    pays_exercice: '', ordre_professionnel: '', numero_inscription: '',
+    specialite: '', nom_affiche: '', titre_professionnel: '',
+  })
+  const [ordres, setOrdres] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+
+  useEffect(() => {
+    if (!profile) return
+    const pays = profile.pays_exercice || ''
+    setProfForm({
+      pays_exercice:      pays,
+      ordre_professionnel: profile.ordre_professionnel || '',
+      numero_inscription:  profile.numero_inscription  || '',
+      specialite:          profile.specialite          || '',
+      nom_affiche:         profile.nom_affiche         || '',
+      titre_professionnel: profile.titre_professionnel || '',
+    })
+    if (pays) setOrdres(getOrdresForPays(pays))
+  }, [profile])
+
+  function setProf(k, v) {
+    if (k === 'pays_exercice') {
+      setOrdres(getOrdresForPays(v))
+      setProfForm(f => ({ ...f, pays_exercice: v, ordre_professionnel: '' }))
+    } else {
+      setProfForm(f => ({ ...f, [k]: v }))
+    }
+  }
+
+  async function handleSaveProf(e) {
+    e.preventDefault()
+    setSaving(true); setSaveMsg('')
+    const { error } = await supabase.from('profiles').update({
+      pays_exercice:      profForm.pays_exercice,
+      ordre_professionnel: profForm.ordre_professionnel,
+      numero_inscription:  profForm.numero_inscription,
+      specialite:          profForm.specialite,
+      nom_affiche:         profForm.nom_affiche,
+      titre_professionnel: profForm.titre_professionnel,
+    }).eq('id', user.id)
+    setSaving(false)
+    setSaveMsg(error ? `Erreur : ${error.message}` : 'Profil professionnel sauvegardé.')
+    setTimeout(() => setSaveMsg(''), 4000)
+  }
+
+  const isError = saveMsg.startsWith('Erreur')
+
   return (
     <div className="fade-in">
       <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 900, color: '#0a2828', marginBottom: 24 }}>{t('dash_profile_title')}</h1>
-      <div className="card" style={{ maxWidth: 480 }}>
+
+      {/* Informations du compte */}
+      <div className="card" style={{ maxWidth: 480, marginBottom: 20 }}>
         {[
-          { label: t('dash_row_email'), value: user?.email },
-          { label: t('dash_row_org'), value: profile?.issuers?.name },
+          { label: t('dash_row_email'),  value: user?.email },
+          { label: t('dash_row_org'),    value: profile?.issuers?.name },
           { label: t('dash_row_domain'), value: profile?.issuers?.domain || '—' },
-          { label: t('dash_row_level'), value: (profile?.issuers?.plan || 'bronze').toUpperCase() },
-          { label: t('dash_row_since'), value: profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : '—' },
+          { label: t('dash_row_level'),  value: (profile?.issuers?.plan || 'bronze').toUpperCase() },
+          { label: t('dash_row_since'),  value: profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : '—' },
         ].map(row => (
           <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #f0fafa', fontSize: 14 }}>
             <span style={{ color: '#8aadad', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>{row.label}</span>
@@ -481,6 +572,69 @@ function ProfileTab({ profile, user }) {
             }
           </div>
         </div>
+      </div>
+
+      {/* Formulaire profil professionnel */}
+      <div className="card" style={{ maxWidth: 480 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0a2828', marginBottom: 6 }}>Profil Professionnel</h3>
+        <p style={{ fontSize: 12, color: '#8aadad', marginBottom: 20 }}>Ces informations apparaîtront sur les certificats que vous émettez.</p>
+
+        {saveMsg && (
+          <div style={{ background: isError ? '#fef2f2' : '#e8f7f7', border: `1px solid ${isError ? '#fca5a5' : '#a8dede'}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: isError ? '#dc2626' : '#0d8f8f' }}>
+            {saveMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleSaveProf}>
+          {/* Pays d'exercice */}
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Pays d'exercice</label>
+            <select className="input-field" value={profForm.pays_exercice} onChange={e => setProf('pays_exercice', e.target.value)}>
+              <option value="">— Sélectionner un pays —</option>
+              {getPaysList().map(p => <option key={p.code} value={p.code}>{p.nom}</option>)}
+            </select>
+          </div>
+
+          {/* Ordre professionnel */}
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Ordre professionnel</label>
+            <select className="input-field" value={profForm.ordre_professionnel} onChange={e => setProf('ordre_professionnel', e.target.value)} disabled={!profForm.pays_exercice}>
+              <option value="">— Sélectionner un ordre —</option>
+              {ordres.map(o => <option key={o.code} value={o.code}>{o.nom}</option>)}
+            </select>
+          </div>
+
+          {/* Numéro d'inscription */}
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Numéro d'inscription</label>
+            <input className="input-field" type="text" value={profForm.numero_inscription} onChange={e => setProf('numero_inscription', e.target.value)} placeholder="Ex : SN-EC-2019-00123" />
+          </div>
+
+          {/* Spécialité */}
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Spécialité</label>
+            <select className="input-field" value={profForm.specialite} onChange={e => setProf('specialite', e.target.value)}>
+              <option value="">— Sélectionner une spécialité —</option>
+              {SPECIALITES.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
+            </select>
+          </div>
+
+          {/* Nom affiché sur les certificats */}
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Nom affiché sur les certificats</label>
+            <input className="input-field" type="text" value={profForm.nom_affiche} onChange={e => setProf('nom_affiche', e.target.value)} placeholder="Ex : Jean-Maurice DIOUF" />
+          </div>
+
+          {/* Titre professionnel */}
+          <div style={{ marginBottom: 24 }}>
+            <label className="label">Titre professionnel</label>
+            <input className="input-field" type="text" value={profForm.titre_professionnel} onChange={e => setProf('titre_professionnel', e.target.value)} placeholder="Ex : Expert-Comptable Diplômé" />
+          </div>
+
+          <button className="btn-primary" style={{ width: '100%', padding: 13, fontSize: 14 }} disabled={saving}>
+            {saving ? <span className="spinner" /> : 'Sauvegarder le profil professionnel'}
+          </button>
+        </form>
       </div>
     </div>
   )
