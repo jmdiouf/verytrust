@@ -525,7 +525,7 @@ function ProfileTab({ profile, user }) {
   async function handleSaveProf(e) {
     e.preventDefault()
     setSaving(true); setSaveMsg('')
-    const { error } = await supabase.from('profiles').update({
+    const { error } = await supabase.from('users').update({
       pays_exercice:      profForm.pays_exercice,
       ordre_professionnel: profForm.ordre_professionnel,
       numero_inscription:  profForm.numero_inscription,
