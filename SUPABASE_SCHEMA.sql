@@ -192,6 +192,22 @@ CREATE POLICY "auth_users_update_docs" ON storage.objects
   USING (bucket_id = 'documents' AND auth.uid()::text = (storage.foldername(name))[1]);
 
 -- ============================================
+-- MIGRATION : PROFILS PUBLICS UTILISATEURS
+-- À exécuter dans Supabase > SQL Editor
+-- ============================================
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE,
+                  ADD COLUMN IF NOT EXISTS bio TEXT,
+                  ADD COLUMN IF NOT EXISTS linkedin_url TEXT,
+                  ADD COLUMN IF NOT EXISTS website_url TEXT,
+                  ADD COLUMN IF NOT EXISTS photo_url TEXT,
+                  ADD COLUMN IF NOT EXISTS is_profile_public BOOLEAN DEFAULT true;
+
+UPDATE users
+SET slug = LOWER(REGEXP_REPLACE(REPLACE(REPLACE(nom_affiche, ' ', '-'), '.', ''), '[^a-z0-9-]', '', 'g'))
+WHERE slug IS NULL AND nom_affiche IS NOT NULL;
+
+-- ============================================
 -- DONNÉES DE TEST
 -- ============================================
 

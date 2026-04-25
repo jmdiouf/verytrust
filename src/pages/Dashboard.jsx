@@ -542,6 +542,9 @@ function ProfileTab({ profile, user }) {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [uploadSuccessMsg, setUploadSuccessMsg] = useState('')
+  const [publicForm, setPublicForm] = useState({ bio: '', linkedin_url: '', website_url: '', is_profile_public: true })
+  const [savingPublic, setSavingPublic] = useState(false)
+  const [saveMsgPublic, setSaveMsgPublic] = useState('')
 
   useEffect(() => {
     if (!profile) return
@@ -555,6 +558,12 @@ function ProfileTab({ profile, user }) {
       titre_professionnel: profile.titre_professionnel || '',
     })
     if (pays) setOrdres(getOrdresForPays(pays))
+    setPublicForm({
+      bio:               profile.bio               || '',
+      linkedin_url:      profile.linkedin_url      || '',
+      website_url:       profile.website_url       || '',
+      is_profile_public: profile.is_profile_public ?? true,
+    })
   }, [profile])
 
   function setProf(k, v) {
@@ -614,6 +623,21 @@ function ProfileTab({ profile, user }) {
       setUploadError(err.message)
     }
     setUploading(false)
+  }
+
+  async function handleSavePublic(e) {
+    e.preventDefault()
+    setSavingPublic(true); setSaveMsgPublic('')
+    const { error } = await supabase.from('users').update({
+      bio:               publicForm.bio               || null,
+      linkedin_url:      publicForm.linkedin_url      || null,
+      website_url:       publicForm.website_url       || null,
+      is_profile_public: publicForm.is_profile_public,
+    }).eq('id', user.id)
+    setSavingPublic(false)
+    setSaveMsgPublic(error ? `Erreur : ${error.message}` : 'Profil public sauvegardé.')
+    if (!error) refreshProfile()
+    setTimeout(() => setSaveMsgPublic(''), 4000)
   }
 
   const isError = saveMsg.startsWith('Erreur')
@@ -772,6 +796,116 @@ function ProfileTab({ profile, user }) {
 
           <button className="btn-primary" style={{ width: '100%', padding: 13, fontSize: 14 }} disabled={saving}>
             {saving ? <span className="spinner" /> : 'Sauvegarder le profil professionnel'}
+          </button>
+        </form>
+      </div>
+
+      {/* ── Profil public ─────────────────────────────────────────────────── */}
+      <div className="card" style={{ maxWidth: 480, marginTop: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0a2828', margin: 0 }}>Profil public</h3>
+          {profile?.slug && (
+            <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 20, background: '#e8f7f7', color: '#0d8f8f', border: '1px solid #a8dede', fontWeight: 700 }}>
+              ◉ ACTIF
+            </span>
+          )}
+        </div>
+        <p style={{ fontSize: 12, color: '#8aadad', marginBottom: profile?.slug ? 12 : 20 }}>
+          Votre page publique VeryTrust visible par tous.
+        </p>
+
+        {profile?.slug && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#f0fafa', border: '1px solid #d4eded', borderRadius: 10, marginBottom: 20 }}>
+            <svg width="14" height="14" fill="none" stroke="#0d8f8f" strokeWidth="2" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+            </svg>
+            <a
+              href={`${BASE_URL}/pro/${profile.slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 12, color: '#0d8f8f', fontWeight: 600, textDecoration: 'none', wordBreak: 'break-all' }}
+            >
+              {BASE_URL}/pro/{profile.slug}
+            </a>
+          </div>
+        )}
+
+        {saveMsgPublic && (
+          <div style={{
+            background: saveMsgPublic.startsWith('Erreur') ? '#fef2f2' : '#e8f7f7',
+            border: `1px solid ${saveMsgPublic.startsWith('Erreur') ? '#fca5a5' : '#a8dede'}`,
+            borderRadius: 8, padding: '10px 14px', marginBottom: 16,
+            fontSize: 13, color: saveMsgPublic.startsWith('Erreur') ? '#dc2626' : '#0d8f8f',
+          }}>
+            {saveMsgPublic}
+          </div>
+        )}
+
+        <form onSubmit={handleSavePublic}>
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Bio</label>
+            <textarea
+              className="input-field"
+              rows={4}
+              value={publicForm.bio}
+              onChange={e => setPublicForm(f => ({ ...f, bio: e.target.value }))}
+              placeholder="Décrivez votre expertise, vos spécialités, votre parcours…"
+              style={{ resize: 'vertical', lineHeight: 1.6 }}
+            />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">LinkedIn</label>
+            <input
+              className="input-field"
+              type="url"
+              value={publicForm.linkedin_url}
+              onChange={e => setPublicForm(f => ({ ...f, linkedin_url: e.target.value }))}
+              placeholder="https://linkedin.com/in/votre-profil"
+            />
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <label className="label">Site web</label>
+            <input
+              className="input-field"
+              type="url"
+              value={publicForm.website_url}
+              onChange={e => setPublicForm(f => ({ ...f, website_url: e.target.value }))}
+              placeholder="https://votre-site.com"
+            />
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 24, userSelect: 'none' }}>
+            <div
+              onClick={() => setPublicForm(f => ({ ...f, is_profile_public: !f.is_profile_public }))}
+              style={{
+                width: 40, height: 22, borderRadius: 11, position: 'relative', flexShrink: 0,
+                background: publicForm.is_profile_public ? '#0d8f8f' : '#d4eded',
+                transition: 'background 0.2s', cursor: 'pointer',
+              }}
+            >
+              <div style={{
+                position: 'absolute', top: 3, left: publicForm.is_profile_public ? 21 : 3,
+                width: 16, height: 16, borderRadius: '50%', background: 'white',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s',
+              }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#0a2828' }}>
+                Profil visible publiquement
+              </div>
+              <div style={{ fontSize: 11, color: '#8aadad', marginTop: 1 }}>
+                {publicForm.is_profile_public
+                  ? 'Votre profil est accessible via le lien public.'
+                  : 'Votre profil est masqué — le lien ne fonctionne pas.'}
+              </div>
+            </div>
+          </label>
+
+          <button className="btn-primary" style={{ width: '100%', padding: 13, fontSize: 14 }} disabled={savingPublic}>
+            {savingPublic ? <span className="spinner" /> : 'Sauvegarder le profil public'}
           </button>
         </form>
       </div>

@@ -15,6 +15,7 @@ export default function VerifyPage() {
   const [searchId, setSearchId] = useState(id || '')
   const [qrDataUrl, setQrDataUrl] = useState(null)
   const [urlCopied, setUrlCopied] = useState(false)
+  const [issuerUser, setIssuerUser] = useState(null)
 
   useEffect(() => {
     if (id) fetchCert(id)
@@ -28,13 +29,23 @@ export default function VerifyPage() {
       .select('*, issuers(name, domain, plan)')
       .eq('id', certId.toUpperCase())
       .single()
-    if (error || !data) { setNotFound(true) }
+    if (error || !data) { setNotFound(true); setIssuerUser(null) }
     else {
       setCert(data)
       setNotFound(false)
       const qr = await generateQRCode(certId.toUpperCase())
       setQrDataUrl(qr)
       await supabase.from('verifications').insert({ certificate_id: certId.toUpperCase(), user_agent: navigator.userAgent })
+      if (data.issuer_id) {
+        const { data: u } = await supabase
+          .from('users')
+          .select('slug, nom_affiche, titre_professionnel, is_profile_public, status')
+          .eq('issuer_id', data.issuer_id)
+          .eq('is_profile_public', true)
+          .eq('status', 'active')
+          .maybeSingle()
+        setIssuerUser(u || null)
+      }
     }
     setLoading(false)
   }
@@ -140,6 +151,47 @@ export default function VerifyPage() {
                 </div>
               ))}
             </div>
+
+            {/* Lien profil professionnel */}
+            {issuerUser?.slug && (
+              <div style={{ padding: '0 32px 4px' }}>
+                <a
+                  href={`/pro/${issuerUser.slug}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '14px 16px',
+                    background: '#f0fafa', border: '1px solid #d4eded', borderRadius: 12,
+                    textDecoration: 'none', transition: 'border-color 0.2s, background 0.2s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#e8f7f7'; e.currentTarget.style.borderColor = '#0d8f8f' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#f0fafa'; e.currentTarget.style.borderColor = '#d4eded' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 8, background: '#e8f7f7', border: '1px solid #c0e4e4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <svg width="15" height="15" fill="none" stroke="#0d8f8f" strokeWidth="2" viewBox="0 0 24 24">
+                        <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#8aadad', textTransform: 'uppercase', marginBottom: 2 }}>Professionnel certifié</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0a2828' }}>
+                        {issuerUser.nom_affiche || cert.issuers?.name}
+                      </div>
+                      {issuerUser.titre_professionnel && (
+                        <div style={{ fontSize: 11, color: '#6a9090', marginTop: 1 }}>{issuerUser.titre_professionnel}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: '#0d8f8f', whiteSpace: 'nowrap' }}>
+                    Voir le profil
+                    <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  </div>
+                </a>
+              </div>
+            )}
 
             {/* Footer */}
             <div style={{ padding: '20px 32px', background: '#f8fefe', borderTop: '1px solid #e8f4f4' }}>

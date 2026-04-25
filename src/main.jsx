@@ -13,6 +13,7 @@ const Dashboard       = lazy(() => import('./pages/Dashboard'))
 const TwoFactorSetup  = lazy(() => import('./pages/TwoFactorSetup'))
 const VerifyTwoFactor = lazy(() => import('./pages/VerifyTwoFactor'))
 const Admin           = lazy(() => import('./pages/Admin'))
+const ProfilePage     = lazy(() => import('./pages/ProfilePage'))
 
 function PageLoader() {
   return (
@@ -37,6 +38,7 @@ function App() {
             <Route path="/2fa-setup" element={<TwoFactorSetup />} />
             <Route path="/verify-2fa" element={<VerifyTwoFactor />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/pro/:slug" element={<ProfilePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
