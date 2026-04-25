@@ -10,6 +10,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+export const BASE_URL = import.meta.env.VITE_APP_URL || 'https://verytrust.vercel.app'
+
 // ── Plan colors ────────────────────────────────────────────────────────────────
 
 export const PLAN_COLORS = {
@@ -67,7 +69,7 @@ export function formatDate(isoString, lang = 'fr') {
 }
 
 export async function generateQRCode(certId) {
-  const url = `https://verytrust.africa/verify/${certId}`
+  const url = `${BASE_URL}/verify/${certId}`
   return QRCode.toDataURL(url, {
     width: 256,
     margin: 2,

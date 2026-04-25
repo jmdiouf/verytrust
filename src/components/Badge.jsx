@@ -1,4 +1,4 @@
-import { PLAN_COLORS } from '../lib/supabase'
+import { PLAN_COLORS, BASE_URL } from '../lib/supabase'
 
 const PLAN_CONFIG = {
   bronze: {
@@ -134,7 +134,7 @@ export function generateRichSealSVG({ plan, certId, entityName, documentType, is
   <text x="162" y="70" font-family="Sora, sans-serif" font-size="8" fill="#4a7070">${entityName} · ${documentType}</text>
   <text x="162" y="84" font-family="Sora, sans-serif" font-size="8" fill="#4a7070">Certifié par ${issuerName} · ${date} à ${time}</text>
   <text x="162" y="104" font-family="monospace" font-size="12" font-weight="700" fill="${c.text}" letter-spacing="2">${certId}</text>
-  <text x="162" y="120" font-family="Sora, sans-serif" font-size="7" fill="${c.text}" opacity="0.45">verytrust.africa/verify/${certId}</text>
+  <text x="162" y="120" font-family="Sora, sans-serif" font-size="7" fill="${c.text}" opacity="0.45">${BASE_URL}/verify/${certId}</text>
 
   <!-- QR Code PNG embedded -->
   <image x="450" y="10" width="120" height="120" href="${qrDataUrl}" preserveAspectRatio="xMidYMid meet"/>
@@ -175,7 +175,7 @@ export function generateSealSVG({ plan, certId, entityName, documentType, issued
   <text x="58" y="42" font-family="Sora, sans-serif" font-size="7" fill="#4a7070">${entityName} · ${documentType}</text>
   <text x="58" y="54" font-family="Sora, sans-serif" font-size="7" fill="#4a7070">Certifié par ${issuerName} · ${date}</text>
   <text x="58" y="66" font-family="monospace" font-size="7" fill="${c.text}" letter-spacing="1">${certId}</text>
-  <text x="58" y="76" font-family="Sora, sans-serif" font-size="6" fill="${c.text}" opacity="0.5">verytrust.africa/verify/${certId}</text>
+  <text x="58" y="76" font-family="Sora, sans-serif" font-size="6" fill="${c.text}" opacity="0.5">${BASE_URL}/verify/${certId}</text>
   <!-- Border -->
   <rect x="1" y="1" width="478" height="78" rx="6" fill="none" stroke="${c.accent}" stroke-width="1" opacity="0.4"/>
 </svg>`

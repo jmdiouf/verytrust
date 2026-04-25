@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { supabase, formatDate, PLAN_COLORS, generateQRCode } from '../lib/supabase'
+import { supabase, formatDate, PLAN_COLORS, generateQRCode, BASE_URL } from '../lib/supabase'
 import Navbar from '../components/Navbar'
 import { BadgeSVG } from '../components/Badge'
 
@@ -153,7 +153,7 @@ export default function VerifyPage() {
                     <div style={{ fontSize: 10, color: '#8aadad', marginBottom: 10, lineHeight: 1.5 }}>{t('verify_share_desc')}</div>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(`https://verytrust.africa/verify/${cert.id}`)
+                        navigator.clipboard.writeText(`${BASE_URL}/verify/${cert.id}`)
                         setUrlCopied(true)
                         setTimeout(() => setUrlCopied(false), 2000)
                       }}

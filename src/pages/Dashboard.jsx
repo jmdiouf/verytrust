@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../hooks/useAuth'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { supabase, generateCertId, hashDocument, formatDate, PLAN_COLORS, DOC_TYPES, generateQRCode } from '../lib/supabase'
+import { supabase, generateCertId, hashDocument, formatDate, PLAN_COLORS, DOC_TYPES, generateQRCode, BASE_URL } from '../lib/supabase'
 import { LogoTeal } from '../components/Logo'
 import { BadgeSVG, generateSealSVG, generateRichSealSVG } from '../components/Badge'
 import { getPaysList, getPaysNom, getOrdresForPays, getReferentielsForPays, SECTEURS, SPECIALITES } from '../lib/paysConfig'
@@ -211,7 +211,7 @@ function CertRow({ cert, showCopy }) {
   const [copied, setCopied] = useState(false)
 
   function copyUrl() {
-    navigator.clipboard.writeText(`https://verytrust.africa/verify/${cert.id}`)
+    navigator.clipboard.writeText(`${BASE_URL}/verify/${cert.id}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -316,7 +316,7 @@ function NewCertTab({ profile, onSuccess }) {
   }
 
   function copyUrl() {
-    navigator.clipboard.writeText(`https://verytrust.africa/verify/${result.id}`)
+    navigator.clipboard.writeText(`${BASE_URL}/verify/${result.id}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -358,7 +358,7 @@ function NewCertTab({ profile, onSuccess }) {
           [t('dash_cert_company'), result.entity_name],
           [t('dash_cert_type'), DOC_TYPES[result.document_type]?.fr],
           [t('dash_cert_date'), formatDate(result.issued_at, 'fr')],
-          [t('dash_cert_url'), `verytrust.africa/verify/${result.id}`],
+          [t('dash_cert_url'), `${BASE_URL}/verify/${result.id}`],
           ...(profile?.nom_affiche        ? [['Professionnel',    profile.nom_affiche]]        : []),
           ...(profile?.titre_professionnel ? [['Titre',           profile.titre_professionnel]] : []),
           ...(profile?.numero_inscription  ? [["N° inscription",  profile.numero_inscription]]  : []),
