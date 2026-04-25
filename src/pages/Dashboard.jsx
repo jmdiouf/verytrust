@@ -791,11 +791,13 @@ function DashValidationTab() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('users')
       .select('*, issuers(*)')
-      .eq('status', 'pending_review')
+      .in('status', ['pending_review', 'pending_documents'])
       .order('created_at', { ascending: false })
+    if (error) console.error('[ValidationTab] Supabase error:', error)
+    else console.log('[ValidationTab] comptes chargés:', data?.length ?? 0, data)
     setPending(data || [])
     setLoading(false)
   }, [])
