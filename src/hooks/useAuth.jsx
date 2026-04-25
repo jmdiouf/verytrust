@@ -56,8 +56,18 @@ export function AuthProvider({ children }) {
     setTwoFactorVerified(false)
   }
 
+  async function refreshProfile() {
+    if (!user?.id) return
+    const { data } = await supabase
+      .from('users')
+      .select('*, issuers(*)')
+      .eq('id', user.id)
+      .single()
+    if (data) setProfile(data)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, twoFactorVerified, setTwoFactorVerified }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, twoFactorVerified, setTwoFactorVerified, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

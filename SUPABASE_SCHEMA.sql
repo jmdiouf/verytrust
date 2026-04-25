@@ -153,6 +153,45 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- ============================================
+-- MIGRATION : VALIDATION COMPTES PROFESSIONNELS
+-- À exécuter dans Supabase > SQL Editor
+-- ============================================
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending_documents',
+  ADD COLUMN IF NOT EXISTS document_url TEXT,
+  ADD COLUMN IF NOT EXISTS document_type TEXT,
+  ADD COLUMN IF NOT EXISTS rejection_reason TEXT,
+  ADD COLUMN IF NOT EXISTS validated_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS validated_by UUID;
+
+-- Marquer les comptes admin existants comme actifs
+UPDATE users SET status = 'active' WHERE role = 'admin';
+
+-- ============================================
+-- STORAGE : BUCKET "documents"
+-- Créer le bucket dans Supabase > Storage > New bucket
+-- Nom : documents  |  Public : true
+-- Puis exécuter les policies ci-dessous :
+-- ============================================
+
+-- Permettre aux utilisateurs authentifiés d'uploader dans documents/
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('documents', 'documents', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "auth_users_upload_docs" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'documents' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+CREATE POLICY "public_read_docs" ON storage.objects
+  FOR SELECT USING (bucket_id = 'documents');
+
+CREATE POLICY "auth_users_update_docs" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id = 'documents' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+-- ============================================
 -- DONNÉES DE TEST
 -- ============================================
 

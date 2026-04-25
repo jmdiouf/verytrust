@@ -2,14 +2,16 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase, PLAN_COLORS, DOC_TYPES, formatDate } from '../lib/supabase'
+import { getPaysNom } from '../lib/paysConfig'
 import { LogoTeal } from '../components/Logo'
 import { BadgeSVG } from '../components/Badge'
 
 const NAV = [
-  { key: 'overview',      label: 'Vue d\'ensemble',  icon: '◉' },
-  { key: 'issuers',       label: 'Issuers',           icon: '◈' },
-  { key: 'certificates',  label: 'Certificats',       icon: '◧' },
-  { key: 'reviewers',     label: 'Réviseurs',         icon: '✦' },
+  { key: 'overview',    label: 'Vue d\'ensemble', icon: '◉' },
+  { key: 'validation',  label: 'Validation',       icon: '⊙' },
+  { key: 'issuers',     label: 'Issuers',          icon: '◈' },
+  { key: 'certificates',label: 'Certificats',      icon: '◧' },
+  { key: 'reviewers',   label: 'Réviseurs',        icon: '✦' },
 ]
 
 const PLANS = ['bronze', 'silver', 'gold', 'platinum']
@@ -68,6 +70,7 @@ export default function Admin() {
       {/* ── Main ── */}
       <main style={{ flex: 1, padding: '32px 40px', overflowY: 'auto' }}>
         {tab === 'overview'     && <OverviewTab />}
+        {tab === 'validation'   && <ValidationTab />}
         {tab === 'issuers'      && <IssuersTab />}
         {tab === 'certificates' && <CertificatesTab />}
         {tab === 'reviewers'    && <ReviewersTab />}
@@ -384,6 +387,186 @@ function ReviewersTab() {
                   >
                     {rev.role === 'reviewer' ? 'Retirer' : 'Rétablir'}
                   </button>
+                </div>
+              ))
+        }
+      </div>
+    </div>
+  )
+}
+
+// ── Validation ────────────────────────────────────────────────────────────────
+
+function ValidationTab() {
+  const { user } = useAuth()
+  const [pending, setPending] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState(null)
+  const [rejectingId, setRejectingId] = useState(null)
+  const [rejectionReason, setRejectionReason] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('users')
+      .select('*, issuers(*)')
+      .eq('status', 'pending_review')
+      .order('created_at', { ascending: false })
+    setPending(data || [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleValidate(id) {
+    setProcessing(id + '-v')
+    await supabase.from('users').update({
+      status: 'active',
+      validated_at: new Date().toISOString(),
+      validated_by: user.id,
+      rejection_reason: null,
+    }).eq('id', id)
+    await load()
+    setProcessing(null)
+  }
+
+  async function handleReject(id) {
+    if (!rejectionReason.trim()) return
+    setProcessing(id + '-r')
+    await supabase.from('users').update({
+      status: 'rejected',
+      rejection_reason: rejectionReason.trim(),
+    }).eq('id', id)
+    setRejectingId(null)
+    setRejectionReason('')
+    await load()
+    setProcessing(null)
+  }
+
+  async function handleRequestMore(id) {
+    setProcessing(id + '-m')
+    await supabase.from('users').update({
+      status: 'pending_documents',
+      rejection_reason: null,
+    }).eq('id', id)
+    await load()
+    setProcessing(null)
+  }
+
+  return (
+    <div className="fade-in">
+      <PageTitle>
+        Validation <span style={{ fontSize: 16, fontWeight: 400, color: '#8aadad' }}>({pending.length} en attente)</span>
+      </PageTitle>
+
+      <div className="card">
+        {loading
+          ? <Spinner />
+          : pending.length === 0
+            ? <Empty text="Aucun compte en attente de validation" />
+            : pending.map(u => (
+                <div key={u.id} style={{ padding: '20px 0', borderBottom: '1px solid #f0fafa' }}>
+
+                  {/* ── User info ── */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
+                    <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#fff7ed', border: '1.5px solid #fb923c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>◈</div>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0a2828' }}>
+                        {u.nom_affiche || u.issuers?.name || u.email}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#8aadad', marginTop: 2 }}>{u.email}</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', marginTop: 6 }}>
+                        {u.pays_exercice && (
+                          <span style={{ fontSize: 11, color: '#4a7070' }}>
+                            🌍 {getPaysNom(u.pays_exercice)}
+                          </span>
+                        )}
+                        {u.ordre_professionnel && (
+                          <span style={{ fontSize: 11, color: '#4a7070' }}>⚖ {u.ordre_professionnel}</span>
+                        )}
+                        {u.numero_inscription && (
+                          <span style={{ fontSize: 11, color: '#4a7070' }}>N° {u.numero_inscription}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 10, padding: '3px 10px', borderRadius: 20, background: '#fff7ed', color: '#c2410c', border: '1px solid #fb923c', fontWeight: 700, flexShrink: 0 }}>
+                      EN ATTENTE
+                    </span>
+                  </div>
+
+                  {/* ── Document link ── */}
+                  {u.document_url && (
+                    <div style={{ marginBottom: 14 }}>
+                      <a
+                        href={u.document_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontSize: 12, color: '#0d8f8f', fontWeight: 600, padding: '6px 14px', border: '1px solid #a8dede', borderRadius: 7, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      >
+                        📄 Voir le document ({(u.document_type || 'fichier').toUpperCase()}) ↗
+                      </a>
+                    </div>
+                  )}
+                  {!u.document_url && (
+                    <div style={{ fontSize: 12, color: '#fb923c', marginBottom: 14 }}>⚠ Aucun document uploadé</div>
+                  )}
+
+                  {/* ── Rejection form ── */}
+                  {rejectingId === u.id && (
+                    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '14px', marginBottom: 14 }}>
+                      <label style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', display: 'block', marginBottom: 8 }}>
+                        Motif de rejet <span style={{ fontWeight: 400 }}>(obligatoire)</span>
+                      </label>
+                      <textarea
+                        value={rejectionReason}
+                        onChange={e => setRejectionReason(e.target.value)}
+                        placeholder="Ex : Document illisible, attestation expirée, ordre non reconnu..."
+                        style={{ width: '100%', minHeight: 80, padding: '8px 12px', borderRadius: 7, border: '1px solid #fca5a5', fontFamily: 'Sora, sans-serif', fontSize: 13, resize: 'vertical', boxSizing: 'border-box', background: 'white' }}
+                      />
+                      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                        <button
+                          onClick={() => handleReject(u.id)}
+                          disabled={!rejectionReason.trim() || processing === u.id + '-r'}
+                          style={{ padding: '7px 16px', borderRadius: 7, border: 'none', background: '#dc2626', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'Sora, sans-serif', opacity: !rejectionReason.trim() ? 0.5 : 1 }}
+                        >
+                          {processing === u.id + '-r' ? '...' : '✗ Confirmer le rejet'}
+                        </button>
+                        <button
+                          onClick={() => { setRejectingId(null); setRejectionReason('') }}
+                          style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #d4eded', background: 'white', color: '#4a7070', fontSize: 12, cursor: 'pointer', fontFamily: 'Sora, sans-serif' }}
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Action buttons ── */}
+                  {rejectingId !== u.id && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => handleValidate(u.id)}
+                        disabled={!!processing}
+                        style={{ padding: '7px 18px', borderRadius: 7, border: 'none', background: '#0d8f8f', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'Sora, sans-serif', minWidth: 100 }}
+                      >
+                        {processing === u.id + '-v' ? '...' : '✓ Valider'}
+                      </button>
+                      <button
+                        onClick={() => { setRejectingId(u.id); setRejectionReason('') }}
+                        disabled={!!processing}
+                        style={{ padding: '7px 18px', borderRadius: 7, border: '1px solid #fca5a5', background: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'Sora, sans-serif', minWidth: 100 }}
+                      >
+                        ✗ Rejeter
+                      </button>
+                      <button
+                        onClick={() => handleRequestMore(u.id)}
+                        disabled={!!processing}
+                        style={{ padding: '7px 18px', borderRadius: 7, border: '1px solid #d4eded', background: 'white', color: '#4a7070', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Sora, sans-serif' }}
+                      >
+                        {processing === u.id + '-m' ? '...' : '↩ Demander complément'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))
         }

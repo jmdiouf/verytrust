@@ -231,6 +231,22 @@ function NewCertTab({ profile, onSuccess }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  const isBlocked = profile?.status && profile.status !== 'active'
+
+  if (isBlocked) {
+    return (
+      <div className="fade-in">
+        <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 900, color: '#0a2828', marginBottom: 24 }}>{t('dash_issue_cert')}</h1>
+        <div style={{ background: '#fff7ed', border: '1.5px solid #fb923c', borderRadius: 14, padding: '24px 28px', maxWidth: 520 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#c2410c', marginBottom: 10 }}>⏳ Compte en cours de validation</div>
+          <p style={{ fontSize: 14, color: '#9a3412', lineHeight: 1.7, margin: 0 }}>
+            Votre compte est en cours de validation. Vous pourrez émettre des certificats dès que VeryTrust aura validé votre dossier.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   function handlePaysChange(pays) {
     const refs = getReferentielsForPays(pays)
     setForm(f => ({ ...f, pays_societe: pays, referentiel: refs[0]?.code || 'SYSCOHADA Révisé 2017' }))
@@ -489,6 +505,7 @@ const cert = await vt.issue({
 function ProfileTab({ profile, user }) {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const { refreshProfile } = useAuth()
   const twoFaEnabled = profile?.two_factor_enabled
 
   const [profForm, setProfForm] = useState({
@@ -498,6 +515,9 @@ function ProfileTab({ profile, user }) {
   const [ordres, setOrdres] = useState([])
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const [uploadSuccessMsg, setUploadSuccessMsg] = useState('')
 
   useEffect(() => {
     if (!profile) return
@@ -538,13 +558,113 @@ function ProfileTab({ profile, user }) {
     setTimeout(() => setSaveMsg(''), 4000)
   }
 
+  async function handleDocumentUpload(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png']
+    if (!allowed.includes(file.type)) {
+      setUploadError('Format non supporté. Utilisez PDF, JPG ou PNG.')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Fichier trop volumineux (max 5 MB).')
+      return
+    }
+    setUploading(true)
+    setUploadError('')
+    try {
+      const ext = file.name.split('.').pop().toLowerCase()
+      const path = `attestations/${user.id}-${Date.now()}.${ext}`
+      const { error: e1 } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
+      if (e1) throw e1
+      const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(path)
+      const { error: e2 } = await supabase.from('users').update({
+        document_url: publicUrl,
+        document_type: ext,
+        status: 'pending_review',
+      }).eq('id', user.id)
+      if (e2) throw e2
+      setUploadSuccessMsg('Document soumis — validation sous 48h')
+      await refreshProfile()
+    } catch (err) {
+      setUploadError(err.message)
+    }
+    setUploading(false)
+  }
+
   const isError = saveMsg.startsWith('Erreur')
+  const status = profile?.status
+  const showDocBanner = status === 'pending_documents' || status === 'pending_review' || status === 'rejected'
 
   return (
     <div className="fade-in">
       <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 900, color: '#0a2828', marginBottom: 24 }}>{t('dash_profile_title')}</h1>
 
-      {/* Informations du compte */}
+      {/* ── Status banner ── */}
+      {showDocBanner && (
+        <div style={{
+          maxWidth: 480, marginBottom: 20,
+          background: status === 'rejected' ? '#fef2f2' : '#fff7ed',
+          border: `1.5px solid ${status === 'rejected' ? '#fca5a5' : '#fb923c'}`,
+          borderRadius: 12, padding: '20px',
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: status === 'rejected' ? '#dc2626' : '#c2410c' }}>
+            {status === 'pending_review' ? '⏳ Document en cours de vérification'
+              : status === 'rejected'   ? '✗ Dossier rejeté'
+              :                           '⚠ Compte en attente de validation'}
+          </div>
+
+          {status === 'pending_documents' && (
+            <p style={{ fontSize: 13, color: '#9a3412', margin: '0 0 12px', lineHeight: 1.6 }}>
+              Pour activer votre compte et émettre des certificats, chargez votre attestation d'inscription à l'ordre professionnel.
+            </p>
+          )}
+          {status === 'pending_review' && !uploadSuccessMsg && (
+            <p style={{ fontSize: 13, color: '#9a3412', margin: '0 0 4px', lineHeight: 1.6 }}>
+              Document soumis — validation sous 48h.
+            </p>
+          )}
+          {status === 'rejected' && profile?.rejection_reason && (
+            <p style={{ fontSize: 13, color: '#7f1d1d', margin: '0 0 12px', background: '#fee2e2', borderRadius: 6, padding: '8px 10px' }}>
+              Motif : {profile.rejection_reason}
+            </p>
+          )}
+
+          {uploadSuccessMsg && (
+            <div style={{ fontSize: 13, color: '#0d8f8f', background: '#e8f7f7', border: '1px solid #a8dede', borderRadius: 7, padding: '8px 12px', marginBottom: 4 }}>
+              ✓ {uploadSuccessMsg}
+            </div>
+          )}
+
+          {!uploadSuccessMsg && (
+            <div style={{ marginTop: 14 }}>
+              <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 10 }}>
+                Formats acceptés : <strong>PDF, JPG, PNG</strong> · Taille max : <strong>5 MB</strong>
+              </p>
+              {uploadError && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, padding: '6px 10px', marginBottom: 10, fontSize: 12, color: '#dc2626' }}>
+                  {uploadError}
+                </div>
+              )}
+              <label style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '9px 18px',
+                background: status === 'pending_review' ? 'white' : '#c2410c',
+                color: status === 'pending_review' ? '#c2410c' : 'white',
+                border: status === 'pending_review' ? '1px solid #fb923c' : 'none',
+                borderRadius: 8, cursor: uploading ? 'default' : 'pointer',
+                fontSize: 13, fontWeight: 600, fontFamily: 'Sora, sans-serif',
+                opacity: uploading ? 0.7 : 1,
+              }}>
+                {uploading ? '⏳ Envoi en cours...' : status === 'pending_review' ? '↑ Remplacer le document' : '↑ Charger l\'attestation'}
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleDocumentUpload} disabled={uploading} style={{ display: 'none' }} />
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Informations du compte ── */}
       <div className="card" style={{ maxWidth: 480, marginBottom: 20 }}>
         {[
           { label: t('dash_row_email'),  value: user?.email },
@@ -552,10 +672,11 @@ function ProfileTab({ profile, user }) {
           { label: t('dash_row_domain'), value: profile?.issuers?.domain || '—' },
           { label: t('dash_row_level'),  value: (profile?.issuers?.plan || 'bronze').toUpperCase() },
           { label: t('dash_row_since'),  value: profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : '—' },
+          ...(status === 'active' ? [{ label: 'Statut', value: '✓ Compte validé' }] : []),
         ].map(row => (
           <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #f0fafa', fontSize: 14 }}>
             <span style={{ color: '#8aadad', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>{row.label}</span>
-            <span style={{ fontWeight: 600, color: '#0a2828' }}>{row.value}</span>
+            <span style={{ fontWeight: 600, color: row.label === 'Statut' ? '#0d8f8f' : '#0a2828' }}>{row.value}</span>
           </div>
         ))}
         <div style={{ marginTop: 20 }}>
@@ -574,7 +695,7 @@ function ProfileTab({ profile, user }) {
         </div>
       </div>
 
-      {/* Formulaire profil professionnel */}
+      {/* ── Formulaire profil professionnel ── */}
       <div className="card" style={{ maxWidth: 480 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0a2828', marginBottom: 6 }}>Profil Professionnel</h3>
         <p style={{ fontSize: 12, color: '#8aadad', marginBottom: 20 }}>Ces informations apparaîtront sur les certificats que vous émettez.</p>
@@ -586,7 +707,6 @@ function ProfileTab({ profile, user }) {
         )}
 
         <form onSubmit={handleSaveProf}>
-          {/* Pays d'exercice */}
           <div style={{ marginBottom: 16 }}>
             <label className="label">Pays d'exercice</label>
             <select className="input-field" value={profForm.pays_exercice} onChange={e => setProf('pays_exercice', e.target.value)}>
@@ -595,7 +715,6 @@ function ProfileTab({ profile, user }) {
             </select>
           </div>
 
-          {/* Ordre professionnel */}
           <div style={{ marginBottom: 16 }}>
             <label className="label">Ordre professionnel</label>
             <select className="input-field" value={profForm.ordre_professionnel} onChange={e => setProf('ordre_professionnel', e.target.value)} disabled={!profForm.pays_exercice}>
@@ -604,13 +723,11 @@ function ProfileTab({ profile, user }) {
             </select>
           </div>
 
-          {/* Numéro d'inscription */}
           <div style={{ marginBottom: 16 }}>
             <label className="label">Numéro d'inscription</label>
             <input className="input-field" type="text" value={profForm.numero_inscription} onChange={e => setProf('numero_inscription', e.target.value)} placeholder="Ex : SN-EC-2019-00123" />
           </div>
 
-          {/* Spécialité */}
           <div style={{ marginBottom: 16 }}>
             <label className="label">Spécialité</label>
             <select className="input-field" value={profForm.specialite} onChange={e => setProf('specialite', e.target.value)}>
@@ -619,13 +736,11 @@ function ProfileTab({ profile, user }) {
             </select>
           </div>
 
-          {/* Nom affiché sur les certificats */}
           <div style={{ marginBottom: 16 }}>
             <label className="label">Nom affiché sur les certificats</label>
             <input className="input-field" type="text" value={profForm.nom_affiche} onChange={e => setProf('nom_affiche', e.target.value)} placeholder="Ex : Jean-Maurice DIOUF" />
           </div>
 
-          {/* Titre professionnel */}
           <div style={{ marginBottom: 24 }}>
             <label className="label">Titre professionnel</label>
             <input className="input-field" type="text" value={profForm.titre_professionnel} onChange={e => setProf('titre_professionnel', e.target.value)} placeholder="Ex : Expert-Comptable Diplômé" />
